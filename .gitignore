@@ -1,0 +1,6 @@
+job_*.out
+output/
+LICENSE
+.idea/
+.ipynb_checkpoints/
+*.pyc
