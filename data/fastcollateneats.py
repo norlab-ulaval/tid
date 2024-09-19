@@ -336,41 +336,18 @@ class FastCollateNeats(Mixup):
     """
 
     def __call__(self, batch, _=None):
-        # batch_size = len(batch)
-        # assert batch_size % 2 == 0, 'Batch size should be even when using this'
-        # half = 'half' in self.mode
-        # if half:
-        #     batch_size //= 2
-
         # Assuming 'batch' is a list of NumPy arrays
         numpy_array = np.array([b[0] for b in batch], dtype=np.int64)
         output = torch.tensor(numpy_array)
 
-        # This is bad for hierarchical training
-        # output = torch.zeros((batch_size, *batch[0][0].shape), dtype=torch.uint8)
-        # if self.mode == 'elem' or self.mode == 'half':
-        #     lam = self._mix_elem_collate(output, batch, half=half)
-        # elif self.mode == 'pair':
-        #     lam = self._mix_pair_collate(output, batch)
-        # else:
-        #     lam = self._mix_batch_collate(output, batch)
-
-        # Label smoothing outputs target as class probabilities instead of class indices in the range [0,C)[0,C)
         # Species
         species_id = torch.tensor([b[1] for b in batch], dtype=torch.int64)
-        species_id_prob = species_id.clone()
-        # species_id_prob = mixup_target(species_id, self.num_classes, lam, self.label_smoothing)
-        # species_id_prob = species_id_prob[:batch_size]
         # Genus
         genus_id = torch.tensor([b[2] for b in batch], dtype=torch.int64)
-        genus_id_prob = genus_id.clone()
-        # genus_id_prob = mixup_target(genus_id, self.num_classes, lam, self.label_smoothing)
-        # genus_id_prob = genus_id_prob[:batch_size]
         # Family
         family_id = torch.tensor([b[3] for b in batch], dtype=torch.int64)
-        family_id_prob = family_id.clone()
-        # family_id_prob = mixup_target(family_id, self.num_classes, lam, self.label_smoothing)
-        # family_id_prob = family_id_prob[:batch_size]
+        # Division
+        division_id = torch.tensor([b[4] for b in batch], dtype=torch.int64)
 
-        return output, species_id, genus_id, family_id, species_id_prob, genus_id_prob, family_id_prob
+        return output, species_id, genus_id, family_id, division_id
 

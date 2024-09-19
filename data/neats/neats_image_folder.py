@@ -43,7 +43,7 @@ def _get_transform(mode):
 
 
 class NEATS(data.Dataset):
-    def __init__(self, root, ann_file, mode='train', transform=None, class_index_offset=0, full_info=False):
+    def __init__(self, root, ann_file, mode='train', transform=None, full_info=False):
         """ A Dataset for NEATS data.
         
         Args:
@@ -89,7 +89,6 @@ class NEATS(data.Dataset):
             self._classes = [0] * len(self._img_paths)
 
         self._num_classes = len(set(self._classes))
-        self.class_index_offset = class_index_offset
 
         if full_info:
             # get image id
@@ -123,11 +122,12 @@ class NEATS(data.Dataset):
             img_id = self._img_ids[index]
             genus_id = self.categories[species_id]['genus_id']
             family_id = self.categories[species_id]['family_id']
+            division_id = self.categories[species_id]['division_id']
             # # Debugging
             # print(f"Image name = {self._img_paths[index]}")
             # print(f"Decoded taxon = {self.categories[species_id]['family']}_{self.categories[species_id]['genus']}_{self.categories[species_id]['species']}")
 
-            return img, species_id+self.class_index_offset, genus_id+self.class_index_offset, family_id+self.class_index_offset, img_id
+            return img, species_id, genus_id, family_id, division_id, img_id
         return img, species_id
     
     def __str__(self):

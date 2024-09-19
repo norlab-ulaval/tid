@@ -691,14 +691,14 @@ def main():
     # Get data
     # Local
     data_root = "/mnt/e1e899db-64e7-4653-855e-c0cbffc9c675/data/datasets/iNatTrees/neats/"
-    ann_train_file = "/mnt/e1e899db-64e7-4653-855e-c0cbffc9c675/data/datasets/iNatTrees/train_neats.json"
+    ann_train_file = "/mnt/e1e899db-64e7-4653-855e-c0cbffc9c675/data/datasets/iNatTrees/train_neats_dummy.json"
     ann_val_file = "/mnt/e1e899db-64e7-4653-855e-c0cbffc9c675/data/datasets/iNatTrees/val_neats.json"
     # HPC
     # data_root = args.data_dir
     # ann_train_file = "/gpfs/groups/gc069/dm9878/repos/pytorch-image-models/datasets/train_neats.json"
     # ann_val_file = "/gpfs/groups/gc069/dm9878/repos/pytorch-image-models/datasets/val_neats.json"
-    dataset_train = NEATS(root=data_root, ann_file=ann_train_file, mode="train", class_index_offset=0, full_info=True)
-    dataset_eval = NEATS(root=data_root, ann_file=ann_val_file, mode="validation", class_index_offset=0, full_info=True)
+    dataset_train = NEATS(root=data_root, ann_file=ann_train_file, mode="train", full_info=True)
+    dataset_eval = NEATS(root=data_root, ann_file=ann_val_file, mode="validation", full_info=True)
     topdown_dic = dataset_train.topdown_mapper         # !!! Warning: mapper is only good for class_index_offset = 0
 
     # setup mixup / cutmix
@@ -1258,16 +1258,9 @@ def train_one_epoch(
     data_start_time = update_start_time = time.time()
     optimizer.zero_grad()
     update_sample_count = 0
-    for batch_idx, (samples, species_id, genus_id, family_id, target_species_prob, target_genus_prob, target_family_prob) in enumerate(loader):
-        # Reorder labels into taxonomic hierarchy following this order (0, family, genus, species)
-        # target = family_id.unsqueeze(1)
-        target = torch.cat((family_id.unsqueeze(1), genus_id.unsqueeze(1), species_id.unsqueeze(1)), dim=1) # species_id.unsqueeze(1)
-        target_prob = torch.cat((target_family_prob.unsqueeze(1), target_genus_prob.unsqueeze(1), target_species_prob.unsqueeze(1)), dim=1)
-        # Append 0 at the first column of labels
-        labels_input = torch.cat((torch.zeros((target.shape[0], 1), dtype=target.dtype, device=target.device), target), dim=1).to(target.device)
-        # Append 1 at the end of targets
-        # target = torch.cat((target, torch.ones((target.shape[0], 1), dtype=target.dtype, device=target.device)), dim=1).to(target.device)
-        # target_prob = torch.cat((target_prob, torch.ones((target_species_prob.unsqueeze(1).size()), dtype=target_prob.dtype, device=target_prob.device)), dim=1).to(target_prob.device)
+    for batch_idx, (samples, species_id, genus_id, family_id, division_id) in enumerate(loader):
+        # Reorder labels into taxonomic hierarchy following this order (family, genus, species)
+        target = torch.cat((division_id.unsqueeze(1), family_id.unsqueeze(1), genus_id.unsqueeze(1), species_id.unsqueeze(1)), dim=1)
         
         last_batch = batch_idx == last_batch_idx
         need_update = last_batch or (batch_idx + 1) % accum_steps == 0
@@ -1287,12 +1280,12 @@ def train_one_epoch(
 
         def _forward():
             with amp_autocast():
-                # output, contrast_loss = model(samples, target.T)
-                output = model(samples, target.T)
+                output, contrast_loss = model(samples, target.T)
+                # output = model(samples, target.T)
                 # print(f"output: {output.size()}")
                 # print(f"target: {target.contiguous().view(-1).shape}")
-                target_x2 = torch.cat((target, target), dim=1)
-                loss = loss_fn(output.view(-1, output.size(2)), target.contiguous().view(-1)) # + contrast_loss
+                # target_x2 = torch.cat((target, target), dim=1)
+                loss = loss_fn(output.view(-1, output.size(2)), target.contiguous().view(-1)) + contrast_loss
             if accum_steps > 1:
                 loss /= accum_steps
             return loss

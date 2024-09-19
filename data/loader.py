@@ -227,22 +227,20 @@ class PrefetchLoaderNeats:
             stream = None
             stream_context = suppress
 
-        for next_input, next_species, next_genus, next_family, next_species_prob, next_genus_prob, next_family_prob in self.loader:
+        for next_input, next_species, next_genus, next_family, next_division in self.loader:
 
             with stream_context():
-                next_input = next_input.to(device=self.device, non_blocking=True)       # image
-                next_species = next_species.to(device=self.device, non_blocking=True)     # species
-                next_genus = next_genus.to(device=self.device, non_blocking=True)       # genus
-                next_family = next_family.to(device=self.device, non_blocking=True)      # family
-                next_species_prob = next_species_prob.to(device=self.device, non_blocking=True)     # species prob
-                next_genus_prob = next_genus_prob.to(device=self.device, non_blocking=True)       # genus prob
-                next_family_prob = next_family_prob.to(device=self.device, non_blocking=True)      # family prob
+                next_input = next_input.to(device=self.device, non_blocking=True)           # image
+                next_species = next_species.to(device=self.device, non_blocking=True)       # species
+                next_genus = next_genus.to(device=self.device, non_blocking=True)           # genus
+                next_family = next_family.to(device=self.device, non_blocking=True)         # family
+                next_division = next_division.to(device=self.device, non_blocking=True)     # division
                 next_input = next_input.to(self.img_dtype).sub_(self.mean).div_(self.std)
                 if self.random_erasing is not None:
                     next_input = self.random_erasing(next_input)
 
             if not first:
-                yield input, target_species, target_genus, target_family, target_species_prob, target_genus_prob, target_family_prob
+                yield input, target_species, target_genus, target_family, target_division
             else:
                 first = False
 
@@ -253,11 +251,9 @@ class PrefetchLoaderNeats:
             target_species = next_species
             target_genus = next_genus
             target_family = next_family
-            target_species_prob = next_species_prob
-            target_genus_prob = next_genus_prob
-            target_family_prob = next_family_prob
+            target_division = next_division
 
-        yield input, target_species, target_genus, target_family, target_species_prob, target_genus_prob, target_family_prob
+        yield input, target_species, target_genus, target_family, target_division
 
     def __len__(self):
         return len(self.loader)

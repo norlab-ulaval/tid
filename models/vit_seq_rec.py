@@ -12,6 +12,7 @@ from os.path import join as pjoin
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss, Dropout, Softmax, Linear, Conv2d, LayerNorm
 
 from timm.models._registry import register_model
@@ -58,77 +59,7 @@ class DecoderConfig:
         self.num_heads = num_heads
         self.attention_dropout_rate = attention_dropout_rate
 
-def sequence_mask(seq):
-    batch_size, seq_len = seq.size()
-    mask = torch.triu(torch.ones((seq_len, seq_len), dtype=torch.uint8),
-                    diagonal=1)
-    mask = mask.unsqueeze(0).expand(batch_size, -1, -1)  # [B, L, L]
-    return mask
-
 ACT2FN = {"gelu": torch.nn.functional.gelu, "relu": torch.nn.functional.relu}
-
-def get_max_attention_index(attention_scores):
-    """
-    Gets the index of the class with the maximum attention score for each token.
-
-    Args:
-      attention_scores: A tensor of attention scores with size [bs, num_head, num_class, num_token].
-
-    Returns:
-      max_attention_index: A tensor of size [bs, num_class] containing the index of the class
-                           with the maximum attention score for each sample in the batch.
-    """
-    # Compute the mean attention scores across the num_head dimension
-    mean_attention_scores = attention_scores.mean(dim=1)  # Shape: [bs, num_class, num_token]
-
-    return mean_attention_scores
-
-class AttentionProbs(nn.Module):
-    def __init__(self, config):
-        super(AttentionProbs, self).__init__()
-        self.num_attention_heads = config.num_heads
-        self.attention_head_size = int(config.hidden_size / self.num_attention_heads)
-        self.all_head_size = self.num_attention_heads * self.attention_head_size
-
-        self.query = Linear(config.hidden_size, self.all_head_size)
-        self.key = Linear(config.hidden_size, self.all_head_size)
-        self.value = Linear(config.hidden_size, self.all_head_size)
-
-        self.softmax = Softmax(dim=-1)
-
-    def transpose_for_scores(self, x):
-        new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
-        x = x.view(*new_x_shape)
-        return x.permute(0, 2, 1, 3)
-
-    def forward(self, hidden_states, k_v=None, attn_mask=None):
-
-        is_cross_attention = k_v is not None
-
-        mixed_query_layer = self.query(hidden_states)
-        if is_cross_attention:
-            mixed_key_layer = self.key(k_v.cuda())
-            mixed_value_layer = self.value(k_v)
-        else:
-            mixed_key_layer = self.key(hidden_states)
-            mixed_value_layer = self.value(hidden_states)
-
-        query_layer = self.transpose_for_scores(mixed_query_layer)
-        key_layer = self.transpose_for_scores(mixed_key_layer)
-        value_layer = self.transpose_for_scores(mixed_value_layer)
-
-        attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
-        attention_scores = attention_scores / math.sqrt(self.attention_head_size)
-
-        if attn_mask is not None:
-            # print('before attn_mask:', attn_mask.size())
-            attn_mask = attn_mask.unsqueeze(1).repeat(1, self.num_attention_heads, 1, 1)
-            # print('attn_mask:', attn_mask.size())
-            attention_scores = attention_scores.masked_fill_(attn_mask.bool(), -np.inf)
-
-        attention_probs = self.softmax(attention_scores)
-
-        return attention_probs
 
 class Attention(nn.Module):
     def __init__(self, config):
@@ -255,28 +186,6 @@ class Decoder(nn.Module):
         # x = self.decoder_norm(x)
         return x
 
-class LabelEmbeddings(nn.Module):
-    """Construct the embeddings from label, position embeddings.
-    """
-    def __init__(self, config):
-        super(LabelEmbeddings, self).__init__()
-        self.tgt_vocab_size = config.num_labels
-        self.emb_size = config.hidden_size
-        self.embedding = nn.Embedding(self.tgt_vocab_size, self.emb_size)
-        self.position_embeddings = nn.Parameter(torch.zeros(1, config.label_level, config.hidden_size))
-        self.layer_norm = nn.LayerNorm(config.hidden_size, eps=1e-6)
-        self.dropout = Dropout(config.dropout_rate)
-
-    def forward(self, x):
-        # print('x size:',x.size())
-        # print('self.position_embeddings size',self.position_embeddings.size())
-        embeddings = self.embedding(x)
-        # print('after embed x size:',x.size())
-        embeddings += self.position_embeddings[:,0:embeddings.size(1),:]
-        embeddings = self.layer_norm(embeddings)
-        embeddings = self.dropout(embeddings)
-        return embeddings
-
 class ViTSEQREC(nn.Module):
     def __init__(self,  img_size=(224, 224),
                         patch_size=16,
@@ -337,40 +246,48 @@ class ViTSEQREC(nn.Module):
         species_kv_original = self.species_kv + self.pos_embed_kv
         species_kv = species_kv_original.repeat(x.shape[0], 1, 1)
 
-        # Stage 0: Family prediction
-        vis_tokens_f = self.decoder(encoded, species_kv)    # visual tokens contextualized with family labels
+        # Stage 0: Division prediction
+        vis_tokens_d = self.decoder(encoded, species_kv)    # visual tokens contextualized with division labels
+        # Force latent keys to encode distinctive information about each class by predicting the correct division
+        # selected_lat = species_kv_original[targets[0,:]].unsqueeze(1)
+        # out_lat_f = self.encoder.forward_head(selected_lat)
+        scores_d = self.encoder.forward_head(vis_tokens_d)
+
+        # Stage 1: Family prediction
+        vis_tokens_f = self.decoder(vis_tokens_d, species_kv)    # visual tokens contextualized with family labels
         # Force latent keys to encode distinctive information about each class by predicting the correct family
         # selected_lat = species_kv_original[targets[0,:]].unsqueeze(1)
         # out_lat_f = self.encoder.forward_head(selected_lat)
         scores_f = self.encoder.forward_head(vis_tokens_f)
 
-        # Stage 1: Genus prediction
+        # Stage 2: Genus prediction
         vis_tokens_g = self.decoder(vis_tokens_f, species_kv)    # visual tokens contextualized with genus labels
         # selected_lat = species_kv_original[targets[1,:]].unsqueeze(1)
         # out_lat_g = self.encoder.forward_head(selected_lat)
         scores_g = self.encoder.forward_head(vis_tokens_g)
 
-        # Stage 2: Species prediction
+        # Stage 3: Species prediction
         vis_tokens_s = self.decoder(vis_tokens_g, species_kv)    # visual tokens contextualized with species labels
         # selected_lat = species_kv_original[targets[2,:]].unsqueeze(1)
         # out_lat_s = self.encoder.forward_head(selected_lat)
         scores_s = self.encoder.forward_head(vis_tokens_s)
 
-        scores = torch.cat((scores_f.unsqueeze(1), scores_g.unsqueeze(1), scores_s.unsqueeze(1)), dim=1) # , out_lat_f.unsqueeze(1), out_lat_g.unsqueeze(1), out_lat_s.unsqueeze(1)
+        scores = torch.cat((scores_d.unsqueeze(1), scores_f.unsqueeze(1), scores_g.unsqueeze(1), scores_s.unsqueeze(1)), dim=1) # , out_lat_f.unsqueeze(1), out_lat_g.unsqueeze(1), out_lat_s.unsqueeze(1)
 
-        # Loss
-        # contrast_loss = con_loss(vis_tokens_f[:, 0], targets[0,:].view(-1))
-        # contrast_loss_latent = self.criterion(F.normalize(species_kv_original[targets[0,:]], p=2, dim=1), targets[0,:].view(-1))      \
-        #                     + self.criterion(F.normalize(species_kv_original[targets[1,:]], p=2, dim=1), targets[1,:].view(-1))    \
-        #                     + self.criterion(F.normalize(species_kv_original[targets[2,:]], p=2, dim=1), targets[2,:].view(-1))
-        #
-        # contrast_loss_cls = self.criterion(F.normalize(vis_tokens_f[:, 0], p=2, dim=1), targets[0,:].view(-1))      \
-        #                 + self.criterion(F.normalize(vis_tokens_g[:, 0], p=2, dim=1), targets[1,:].view(-1))    \
-        #                 + self.criterion(F.normalize(vis_tokens_s[:, 0], p=2, dim=1), targets[2,:].view(-1))
-        #
-        # contrast_loss = contrast_loss_latent + contrast_loss_cls
+        # Supervised Contrastive Loss
+        con_loss_latent = self.criterion(F.normalize(species_kv_original[targets[0,:]], p=2, dim=1), targets[0,:].view(-1))    \
+                            + self.criterion(F.normalize(species_kv_original[targets[1,:]], p=2, dim=1), targets[1,:].view(-1))     \
+                            + self.criterion(F.normalize(species_kv_original[targets[2,:]], p=2, dim=1), targets[2,:].view(-1))     \
+                            + self.criterion(F.normalize(species_kv_original[targets[3,:]], p=2, dim=1), targets[3,:].view(-1))
 
-        return scores #, contrast_loss
+        con_loss_cls = self.criterion(F.normalize(vis_tokens_d[:, 0], p=2, dim=1), targets[0,:].view(-1))      \
+                            + self.criterion(F.normalize(vis_tokens_f[:, 0], p=2, dim=1), targets[1,:].view(-1))    \
+                            + self.criterion(F.normalize(vis_tokens_g[:, 0], p=2, dim=1), targets[2,:].view(-1))    \
+                            + self.criterion(F.normalize(vis_tokens_s[:, 0], p=2, dim=1), targets[3,:].view(-1))
+
+        con_loss = con_loss_latent + con_loss_cls
+
+        return scores, con_loss
 
 # @register_model
 # def vit_base_seq_rec_patch16(pretrained=False, **kwargs):

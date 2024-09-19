@@ -443,13 +443,13 @@ if __name__ == '__main__':
     # img_dir = '/mnt/e1e899db-64e7-4653-855e-c0cbffc9c675/data/dataset_drone/images'
     # coco_test_filename =  '/mnt/e1e899db-64e7-4653-855e-c0cbffc9c675/data/datasets/dataset_placette/annotations/instances.json'
     # img_dir = '/mnt/e1e899db-64e7-4653-855e-c0cbffc9c675/data/datasets/dataset_placette/images'
-    # coco_test_filename =  '/mnt/e1e899db-64e7-4653-855e-c0cbffc9c675/data/datasets/drone_sherbrooke_20240901/annotations/instances.json'
-    # img_dir = '/mnt/e1e899db-64e7-4653-855e-c0cbffc9c675/data/datasets/drone_sherbrooke_20240901/images'
+    coco_test_filename =  '/mnt/e1e899db-64e7-4653-855e-c0cbffc9c675/data/datasets/drone_sherbrooke_20240901/annotations/instances.json'
+    img_dir = '/mnt/e1e899db-64e7-4653-855e-c0cbffc9c675/data/datasets/drone_sherbrooke_20240901/images'
 
     class_list[-1] = "arbre"     # last class is trees without taxonomic labels
-    # # 102MP
-    coco_test_filename =  '/home/vincent/Documents/supervisely_labels/coco_with_taxo.json'
-    img_dir = '/home/vincent/Downloads/photos_arbres_vincent'
+    # # # 102MP
+    # coco_test_filename =  '/home/vincent/Documents/supervisely_labels/coco_with_taxo.json'
+    # img_dir = '/home/vincent/Downloads/photos_arbres_vincent'
 
     # Load from COCO file and register dataset in D2
     test_set_name = "tree_set_102MP"
