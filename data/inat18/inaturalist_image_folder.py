@@ -86,9 +86,9 @@ ANN_FILE = {
 
 
 class iNaturalist(data.Dataset):
-    def __init__(self, root, mode="train", transform=None, full_info=False):
-        """ A Dataset for iNaturalist data.
-        
+    def __init__(self, root, ann_file, mode='train', transform=None, full_info=False):
+        """ A Dataset for NEATS data.
+
         Args:
             data ([type]): Parent class.
             root (str or Path): Path to the root folder.
@@ -101,12 +101,8 @@ class iNaturalist(data.Dataset):
             full_info (bool, optional): Defaults to False. If `True` the
                 loader will return also the `taxonomic_class` and the `img_id`.
         """
-
-        self._mode = mode
         self._full_info=full_info
 
-        # make pathlib.Paths
-        ann_file = ANN_FILE[mode]
         try:
             self._root = root
             self.annotations_path = root / ann_file
@@ -119,9 +115,12 @@ class iNaturalist(data.Dataset):
         with open(ann_file) as data_file:
             ann_data = json.load(data_file)
 
+        # A list of dicts with all the genus and family names and ids associated with a species id
+        self.categories = ann_data["categories"]
+        # print(f"Annotations categories: {self.categories}")
+
         # set up the filenames and annotations
         self._img_paths = [root / aa["file_name"].replace('train_val2018/', '') for aa in ann_data["images"]]  # ** modified
-        #self._img_paths = [root / aa["file_name"].replace('test2018/', '') for aa in ann_data["images"]]  # ** no annotations, only 1 class ...
 
         # if we dont have class labels set them to '0'
         if "annotations" in ann_data.keys():
@@ -134,10 +133,6 @@ class iNaturalist(data.Dataset):
         if full_info:
             # get image id
             self._img_ids = [aa["id"] for aa in ann_data["images"]]
-            # load taxonomy
-            self._taxonomy, self._classes_taxonomic = load_taxonomy(
-                ann_data, self._classes
-            )
 
         # image loading, preprocessing and augmentations
         self.loader = default_loader
@@ -149,7 +144,7 @@ class iNaturalist(data.Dataset):
         # print out some stats
         print(f"iNaturalist: found {len(self._img_paths)} images.")
         print(f"iNaturalist: found {len(set(self._classes))} classes.")
-    
+
     @property
     def num_classes(self):
         return self._num_classes
@@ -157,6 +152,7 @@ class iNaturalist(data.Dataset):
     def __getitem__(self, index):
         img = self.loader(self._img_paths[index])
         species_id = self._classes[index]  # class
+        # species_id -= 1  # offsets it by -1 since cat_id starts at 1 but category indexing starts at 0
 
         if self.transform:
             img = self.transform(img)
@@ -164,9 +160,11 @@ class iNaturalist(data.Dataset):
         if self._full_info:
             # we can also return some additionl info
             img_id = self._img_ids[index]
-            tax_id = self._classes_taxonomic[species_id]
+            genus_id = self.categories[species_id]['genus_id']
+            family_id = self.categories[species_id]['family_id']
+            order_id = self.categories[species_id]['order_id']
 
-            return img, species_id, tax_id, img_id
+            return img, species_id, genus_id, family_id, order_id, img_id
         return img, species_id
     
     def __str__(self):

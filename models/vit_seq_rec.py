@@ -246,22 +246,22 @@ class ViTSEQREC(nn.Module):
         species_kv_original = self.species_kv + self.pos_embed_kv
         species_kv = species_kv_original.repeat(x.shape[0], 1, 1)
 
-        # Stage 0: Division prediction
-        vis_tokens_d = self.decoder(encoded, species_kv)    # visual tokens contextualized with division labels
-        # Force latent keys to encode distinctive information about each class by predicting the correct division
-        # selected_lat = species_kv_original[targets[0,:]].unsqueeze(1)
-        # out_lat_f = self.encoder.forward_head(selected_lat)
-        scores_d = self.encoder.forward_head(vis_tokens_d)
-
-        # Stage 1: Family prediction
-        vis_tokens_f = self.decoder(vis_tokens_d, species_kv)    # visual tokens contextualized with family labels
-        # Force latent keys to encode distinctive information about each class by predicting the correct family
-        # selected_lat = species_kv_original[targets[0,:]].unsqueeze(1)
-        # out_lat_f = self.encoder.forward_head(selected_lat)
-        scores_f = self.encoder.forward_head(vis_tokens_f)
+        # # Stage 0: Division prediction
+        # vis_tokens_d = self.decoder(encoded, species_kv)    # visual tokens contextualized with division labels
+        # # Force latent keys to encode distinctive information about each class by predicting the correct division
+        # # selected_lat = species_kv_original[targets[0,:]].unsqueeze(1)
+        # # out_lat_f = self.encoder.forward_head(selected_lat)
+        # scores_d = self.encoder.forward_head(vis_tokens_d)
+        #
+        # # Stage 1: Family prediction
+        # vis_tokens_f = self.decoder(vis_tokens_d, species_kv)    # visual tokens contextualized with family labels
+        # # Force latent keys to encode distinctive information about each class by predicting the correct family
+        # # selected_lat = species_kv_original[targets[0,:]].unsqueeze(1)
+        # # out_lat_f = self.encoder.forward_head(selected_lat)
+        # scores_f = self.encoder.forward_head(vis_tokens_f)
 
         # Stage 2: Genus prediction
-        vis_tokens_g = self.decoder(vis_tokens_f, species_kv)    # visual tokens contextualized with genus labels
+        vis_tokens_g = self.decoder(encoded, species_kv)    # visual tokens contextualized with genus labels
         # selected_lat = species_kv_original[targets[1,:]].unsqueeze(1)
         # out_lat_g = self.encoder.forward_head(selected_lat)
         scores_g = self.encoder.forward_head(vis_tokens_g)
@@ -272,22 +272,23 @@ class ViTSEQREC(nn.Module):
         # out_lat_s = self.encoder.forward_head(selected_lat)
         scores_s = self.encoder.forward_head(vis_tokens_s)
 
-        scores = torch.cat((scores_d.unsqueeze(1), scores_f.unsqueeze(1), scores_g.unsqueeze(1), scores_s.unsqueeze(1)), dim=1) # , out_lat_f.unsqueeze(1), out_lat_g.unsqueeze(1), out_lat_s.unsqueeze(1)
+        # scores = torch.cat((scores_d.unsqueeze(1), scores_f.unsqueeze(1), scores_g.unsqueeze(1), scores_s.unsqueeze(1)), dim=1) # , out_lat_f.unsqueeze(1), out_lat_g.unsqueeze(1), out_lat_s.unsqueeze(1)
+        scores = torch.cat((scores_g.unsqueeze(1), scores_s.unsqueeze(1)), dim=1) # , out_lat_f.unsqueeze(1), out_lat_g.unsqueeze(1), out_lat_s.unsqueeze(1)
 
-        # Supervised Contrastive Loss
-        con_loss_latent = self.criterion(F.normalize(species_kv_original[targets[0,:]], p=2, dim=1), targets[0,:].view(-1))    \
-                            + self.criterion(F.normalize(species_kv_original[targets[1,:]], p=2, dim=1), targets[1,:].view(-1))     \
-                            + self.criterion(F.normalize(species_kv_original[targets[2,:]], p=2, dim=1), targets[2,:].view(-1))     \
-                            + self.criterion(F.normalize(species_kv_original[targets[3,:]], p=2, dim=1), targets[3,:].view(-1))
+        # # Supervised Contrastive Loss
+        # con_loss_latent = self.criterion(F.normalize(species_kv_original[targets[0,:]], p=2, dim=1), targets[0,:].view(-1))    \
+        #                     + self.criterion(F.normalize(species_kv_original[targets[1,:]], p=2, dim=1), targets[1,:].view(-1))     \
+        #                     + self.criterion(F.normalize(species_kv_original[targets[2,:]], p=2, dim=1), targets[2,:].view(-1))     \
+        #                     + self.criterion(F.normalize(species_kv_original[targets[3,:]], p=2, dim=1), targets[3,:].view(-1))
+        #
+        # con_loss_cls = self.criterion(F.normalize(vis_tokens_d[:, 0], p=2, dim=1), targets[0,:].view(-1))      \
+        #                     + self.criterion(F.normalize(vis_tokens_f[:, 0], p=2, dim=1), targets[1,:].view(-1))    \
+        #                     + self.criterion(F.normalize(vis_tokens_g[:, 0], p=2, dim=1), targets[2,:].view(-1))    \
+        #                     + self.criterion(F.normalize(vis_tokens_s[:, 0], p=2, dim=1), targets[3,:].view(-1))
+        #
+        # con_loss = con_loss_latent + con_loss_cls
 
-        con_loss_cls = self.criterion(F.normalize(vis_tokens_d[:, 0], p=2, dim=1), targets[0,:].view(-1))      \
-                            + self.criterion(F.normalize(vis_tokens_f[:, 0], p=2, dim=1), targets[1,:].view(-1))    \
-                            + self.criterion(F.normalize(vis_tokens_g[:, 0], p=2, dim=1), targets[2,:].view(-1))    \
-                            + self.criterion(F.normalize(vis_tokens_s[:, 0], p=2, dim=1), targets[3,:].view(-1))
-
-        con_loss = con_loss_latent + con_loss_cls
-
-        return scores, con_loss
+        return scores #, con_loss
 
 # @register_model
 # def vit_base_seq_rec_patch16(pretrained=False, **kwargs):
